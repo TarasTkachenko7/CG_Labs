@@ -45,7 +45,6 @@ bool check(VkResult result, const char* operation) {
     return false;
 }
 
-// Для небольшой модели достаточно памяти, доступной CPU: записываем один раз.
 bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, Buffer& buffer) {
     const VkBufferCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -75,21 +74,17 @@ bool upload(const Buffer& buffer, const void* data, size_t size) {
 bool createCone() {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    // Вершина конуса и центр основания. Радиус 1, высота 2.
     vertices.push_back({ { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.8f, 0.25f } });
     vertices.push_back({ { 0.0f, -1.0f, 0.0f }, { 0.55f, 0.22f, 0.05f } });
     for (uint32_t i = 0; i < segments; ++i) {
         const float angle = 2.0f * pi * float(i) / float(segments);
         const float x = std::cos(angle), z = std::sin(angle);
-        // Две копии окружности нужны для разных фиксированных цветов
-        // боковой поверхности и основания, без изменения цвета через UI.
         vertices.push_back({ { x, -1.0f, z }, { 0.95f, 0.38f, 0.08f } });
         vertices.push_back({ { x, -1.0f, z }, { 0.55f, 0.22f, 0.05f } });
     }
     for (uint32_t i = 0; i < segments; ++i) {
         const uint32_t current = 2 + 2 * i;
         const uint32_t next = 2 + 2 * ((i + 1) % segments);
-        // Один треугольник сбоку и один в основании для каждого сегмента.
         indices.insert(indices.end(), { 0, next, current });
         indices.insert(indices.end(), { 1, current + 1, next + 1 });
     }
@@ -274,7 +269,7 @@ void resetTransform() {
 
 bool initialize(const std::filesystem::path& shader_directory) {
     if (createCone() && createUniforms() && createPipeline(shader_directory)) return true;
-    shutdown(); // Освобождаем и частично созданные ресурсы при ошибке.
+    shutdown();
     return false;
 }
 
@@ -337,7 +332,6 @@ void render(const graphics::internal::FrameData& fd) {
     const Mat4 projection = use_perspective ? perspective(pi / 3.0f, aspect, 0.1f, 100.0f) :
         orthographic(2.5f, aspect, 0.1f, 100.0f);
     const Mat4 mvp = projection * view * model;
-    // prepare() уже дождался завершения предыдущего кадра: UBO можно обновить.
     upload(uniform_buffer, &mvp, sizeof(mvp));
 
     vkResetCommandBuffer(fd.command_buffer, 0);

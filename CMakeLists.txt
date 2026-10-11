@@ -116,5 +116,3 @@ if(GLSLC_FOUND)
 else()
 	message(FATAL_ERROR "glslc not found. Install Vulkan SDK and add its Bin directory to PATH.")
 endif()
-
-# Цель shaders обновляет файлы рядом с exe даже при изменении только GLSL.

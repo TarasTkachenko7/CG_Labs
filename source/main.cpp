@@ -21,7 +21,7 @@ constexpr char default_window_title[] = "CG Lab 1 - Variant 9 - Cone";
 
 GLFWwindow* glfw_window;
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
 	const auto shader_directory = std::filesystem::absolute(argv[0]).parent_path() / "shaders";

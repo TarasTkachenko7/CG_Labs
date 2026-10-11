@@ -2,7 +2,6 @@
 
 #include <cmath>
 
-// Матрицы хранятся по столбцам, как mat4 в GLSL.
 struct Mat4 {
     float values[16]{};
 
@@ -63,8 +62,6 @@ inline Mat4 rotationZ(float angle) {
     return m;
 }
 
-// Камера смотрит вдоль -Z. В Vulkan глубина после деления на W: [0, 1].
-// Знак Y меняем, поскольку экранная ось Y Vulkan направлена вниз.
 inline Mat4 perspective(float fov, float aspect, float near_plane, float far_plane) {
     Mat4 m;
     const float f = 1.0f / std::tan(fov / 2.0f);
