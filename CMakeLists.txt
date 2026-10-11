@@ -11,11 +11,9 @@ elseif(APPLE)
 	target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 elseif(WIN32)
 	if(MSVC)
-		target_compile_options(${PROJECT_NAME} PRIVATE /W4 /wd4201)
-		target_link_options(${PROJECT_NAME} PRIVATE /subsystem:windows /entry:mainCRTStartup)
+		target_compile_options(${PROJECT_NAME} PRIVATE /W4 /wd4201 /utf-8)
 	else()
 		target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
-		target_link_options(${PROJECT_NAME} PRIVATE -mwindows)
 	endif()
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -D_USE_MATH_DEFINES)
 else()
@@ -81,7 +79,7 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 
 # Compile shaders
-find_program(GLSLC_FOUND glslc)
+find_program(GLSLC_FOUND glslc HINTS "$ENV{VULKAN_SDK}/Bin")
 if(GLSLC_FOUND)
 	set(_SHADER_BINARIES)
 
@@ -92,9 +90,10 @@ if(GLSLC_FOUND)
 
 		add_custom_command(
 			OUTPUT ${SHADER_BINARY_PATH}
-			COMMAND glslc ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
+		COMMAND "${GLSLC_FOUND}" "${SHADER_SOURCE}" -o "${SHADER_BINARY_PATH}"
 			DEPENDS ${SHADER_SOURCE}
 			COMMENT "Compiling ${SHADER_FILE} shader"
+		VERBATIM
 		)
 
 		list(APPEND _SHADER_BINARIES ${SHADER_BINARY_PATH})
@@ -103,9 +102,19 @@ if(GLSLC_FOUND)
 	# To compile shader file, use compile_shader function with a file name
 	# of a shader inside shaders directory. See example below:
 
-	# compile_shader(example.vert)
-	# compile_shader(example.frag)
+	compile_shader(cone.vert)
+	compile_shader(cone.frag)
 
-	add_custom_target(shaders DEPENDS ${_SHADER_BINARIES})
+	add_custom_target(shaders
+		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SHADER_BINARIES}
+			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
+		DEPENDS ${_SHADER_BINARIES}
+		VERBATIM
+	)
 	add_dependencies(${PROJECT_NAME} shaders)
+else()
+	message(FATAL_ERROR "glslc not found. Install Vulkan SDK and add its Bin directory to PATH.")
 endif()
+
+# Цель shaders обновляет файлы рядом с exe даже при изменении только GLSL.

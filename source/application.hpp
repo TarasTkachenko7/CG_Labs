@@ -1,10 +1,11 @@
 #pragma once
 
 #include "graphics_internal.hpp"
+#include <filesystem>
 
 namespace application {
 
-bool initialize();
+bool initialize(const std::filesystem::path& shader_directory);
 void shutdown();
 
 void update(double time);

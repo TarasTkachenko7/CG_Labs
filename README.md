@@ -1,66 +1,109 @@
-# 🌋 Vulkan Starter App
+# Лабораторная №1: основы 3D-графики
 
-## Getting started
+Вариант 9 — конус. Порядковый номер 21, число вариантов 12:
+`((21 - 1) % 12) + 1 = 9`.
 
-You need C++ compiler, Vulkan SDK and CMake installed before you can build this project.
+Решение базовой части на оценку 3 на C++20, Vulkan, GLFW и ImGui.
+Конус имеет радиус 1, высоту 2 и 32 сегмента окружности. Закрытая модель
+содержит 64 треугольника: 32 боковых и 32 в основании.
 
-This project uses C++20 standard and thus requires either of those compilers:
-- GCC 10.X
-- Clang 10
-- Microsoft Visual Studio 2019
+В общих требованиях указаны динамическая смена проекции и преобразования,
+поэтому они доступны с клавиатуры. ImGui показывает подсказку и текущие значения.
+Дополнительные задания с переключателями и ползунками интерфейса, анимацией,
+редактором цвета, цветами от координат и несколькими объектами не реализованы.
+Цвета вершины, боковой окружности и основания фиксированы в коде.
 
-This is officially tested on *Windows* and *GNU/Linux platforms*, no *macOS* support yet.
-If you have a working macOS solution of this code, consider submitting a PR so others
-can build this example code without a hassle!
+## Сборка под Windows
 
-<ins>**1. Downloading the repository**</ins>
+Нужны Visual Studio 2022 с компонентом «Разработка классических приложений на C++»,
+CMake и Vulkan SDK. Команда `glslc --version` должна работать из терминала.
+Первое конфигурирование скачивает библиотеки с GitHub.
 
-Start by cloning the repository with `git clone --depth 1 https://github.com/vladeemerr/vulkan-starter-app`
+В PowerShell из папки проекта:
 
-This repository does not contain any submodules, it utilizes CMake's `FetchContent` feature instead.
-
-<ins>**2. Configuring the project**</ins>
-
-Run either one of the CMake lines to download dependencies and configure the project:
-
-```bash
-cmake --preset debug       # for GNU/Linux (GCC/Clang)
-cmake --preset msvc-debug  # for Windows (Visual Studio 2019)
-cmake --preset mingw-debug # for Windows (MinGW)
+```powershell
+cmake --preset msvc-debug
+cmake --build build-debug --config Debug --parallel 4
+.\build-debug\Debug\vulkan-starter-app.exe
 ```
 
-If you wish to build in `release` mode, change `debug` to `release`.
+В уже настроенной папке сборки достаточно второй команды. Для запуска также
+можно открыть `build-debug/Debug/vulkan-starter-app.exe` двойным щелчком.
+Рядом должна оставаться папка `shaders` с двумя файлами `.spv`.
+Сборка создаёт и копирует эти файлы автоматически.
+При повторной сборке закрой запущенную программу: Windows блокирует её exe.
 
-If changes are made (added/removed files), or if you want to regenerate project files, rerun the command above.
+Программа открывает окно с конусом. Сообщения валидации Vulkan выводятся в консоль.
+Окно можно растягивать, сворачивать и разворачивать.
 
-<ins>**3. Building**</ins>
+## Сборка под Linux
 
-To build the project, use the line below. You are most likely using `debug` preset, so
-the directory that will eventually contain your build files is named `build-debug`.
+При установленных компиляторе C++20, CMake, Ninja, Vulkan SDK / пакетах разработки
+Vulkan и glslc:
 
-Likewise for `release` that directory will be named `build-release`
-
-Run one those commands, depending on which preset you chose:
-
-```bash
-cmake --build build-debug --parallel # for debug
-cmake --build build-release --parallel # for release
+```sh
+cmake --preset debug
+cmake --build build-debug --parallel 4
+./build-debug/vulkan-starter-app
 ```
 
-### Running
+На этой машине проверяется Windows-сборка; Linux-сборка здесь не проверялась.
 
-`build-*` directory will contain the executable in one of the subdirectories after successful build.
+## Управление
 
-For `msvc-{debug|release}` builds output subdirectory is set to `Debug` or `Release` respectively.
-For other configurations output subdirectory is set to `vulkan-starter-app`.
+Выбери английскую раскладку и щёлкни по сцене. Удерживай клавиши движения и поворота.
 
-**Make sure your working directory is set to the project root!**
-Project root is where this README file resides. Otherwise, the
-code responsible for loading shaders or other resources from files will fail,
-because relative paths are used.
+| Клавиши | Действие |
+| --- | --- |
+| P | Перспективная / ортографическая проекция |
+| Стрелки вверх / вниз | Поворот вокруг X |
+| Стрелки влево / вправо | Поворот вокруг Y |
+| Z / C | Поворот вокруг Z |
+| A / D | Перемещение по X |
+| W / S | Перемещение по Y |
+| Q / E | Перемещение по Z |
+| + / - (или цифровой блок) | Увеличение / уменьшение масштаба |
+| R | Сброс преобразований и перспективная проекция |
 
-### Compiling shaders
+Масштаб ограничен диапазоном 0.1–3, координаты перемещения — от -3 до 3.
+При сильном перемещении или увеличении объект может выйти за края окна — это нормально;
+нажми R, чтобы вернуть его в начальное положение.
+Для проверки основания поверни конус стрелкой вверх примерно на четверть оборота.
 
-`CMakeLists.txt` has a build recipe for compiling shader files
-along with an application. Look for a comment in this file to see
-how to compile your shaders.
+## Код и защита
+
+- `source/application.cpp`: построение конуса, буферы, дескрипторы, конвейер,
+  управление, запись команд отрисовки и освобождение ресурсов.
+- `source/matrices.hpp`: умножение матриц, перемещение, повороты, масштаб и проекции.
+- `shaders/cone.vert`: преобразование вершины матрицей MVP и передача цвета.
+- `shaders/cone.frag`: вывод интерполированного цвета.
+- `source/graphics_internal.cpp`: стартовый код инициализации Vulkan и ImGui.
+- `DEFENSE.md`: краткое объяснение решения для подготовки к защите.
+
+Проект основан на [стартовом коде преподавателя](https://github.com/vladeemerr/vulkan-starter-app).
+
+## Лабораторные в Git
+
+Основная ветка — `main`. Новые лабораторные продолжаются в этой же ветке.
+Завершённая первая лабораторная сохранена тегом `lab-1` и отдельной веткой
+`lab-1`; они указывают на один коммит. Эта ветка остаётся контрольной копией,
+а дальнейшие изменения выполняются в `main`.
+
+Для просмотра результата первой лабораторной:
+
+```sh
+git switch lab-1
+```
+
+Для продолжения работы:
+
+```sh
+git switch main
+```
+
+После завершения следующей лабораторной её последний коммит можно отметить
+новым тегом, например `lab-2`, и создать одноимённую ветку.
+
+`origin` указывает на [репозиторий лабораторных](https://github.com/TarasTkachenko7/CG_Labs),
+`upstream` — на стартовый код преподавателя. Изменения шаблона можно получить
+командой `git fetch upstream`; само получение не меняет исходники в `main`.

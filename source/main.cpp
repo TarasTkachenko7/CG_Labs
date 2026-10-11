@@ -17,13 +17,15 @@ namespace {
 constexpr int32_t default_window_width = 1280;
 constexpr int32_t default_window_height = 720;
 
-constexpr char default_window_title[] = "Vulkan Starter App";
+constexpr char default_window_title[] = "CG Lab 1 - Variant 9 - Cone";
 
 GLFWwindow* glfw_window;
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+	const auto shader_directory = std::filesystem::absolute(argv[0]).parent_path() / "shaders";
+	(void)argc;
 	int status = EXIT_SUCCESS;
 
 	if (!glfwInit()) {
@@ -66,7 +68,7 @@ int main() {
 		goto err_graphics_init;
 	}
 
-	if (!application::initialize()) {
+	if (!application::initialize(shader_directory)) {
 		std::cerr << "Failed to initialize application\n";
 		status = EXIT_FAILURE;
 		goto err_application_init;
@@ -76,6 +78,12 @@ int main() {
 		const double time = glfwGetTime();
 
 		glfwPollEvents();
+		int width, height;
+		glfwGetFramebufferSize(glfw_window, &width, &height);
+		if (width == 0 || height == 0) {
+			glfwWaitEvents();
+			continue;
+		}
 		ImGui_ImplGlfw_NewFrame();
 
 		ImGui::NewFrame();
@@ -83,6 +91,10 @@ int main() {
 		ImGui::Render();
 
 		graphics::internal::FrameData fd = graphics::internal::prepare();
+		if (fd.command_buffer == VK_NULL_HANDLE) {
+			status = EXIT_FAILURE;
+			break;
+		}
 		application::render(fd);
 		graphics::internal::submitAndPresent();
 	}
@@ -99,5 +111,5 @@ err_imgui_init:
 err_null_window:
 	glfwTerminate();
 
-	return 0;
+	return status;
 }
