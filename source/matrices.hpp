@@ -62,6 +62,11 @@ inline Mat4 rotationZ(float angle) {
     return m;
 }
 
+inline Mat4 viewMatrix(float x, float y, float z, float pitch, float yaw, float roll) {
+    // The view matrix reverses the camera's translation and rotations in reverse order.
+    return rotationZ(-roll) * rotationX(-pitch) * rotationY(-yaw) * translation(-x, -y, -z);
+}
+
 inline Mat4 perspective(float fov, float aspect, float near_plane, float far_plane) {
     Mat4 m;
     const float f = 1.0f / std::tan(fov / 2.0f);

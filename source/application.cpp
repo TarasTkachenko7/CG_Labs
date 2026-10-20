@@ -3,6 +3,7 @@
 
 #include <imgui.h>
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <fstream>
@@ -15,8 +16,53 @@ namespace {
 
 struct Vertex {
     float position[3];
-    float color[3];
+    float normal[3];
 };
+
+// vec4 fields keep the CPU layout identical to std140 in both shaders.
+struct alignas(16) Uniforms {
+    Mat4 mvp;
+    Mat4 model;
+    float camera_position[4];
+    float light_direction[4];
+    float light_color_intensity[4];
+    float ambient_color_intensity[4];
+    float albedo[4];
+    float specular_shininess[4];
+    float direction_to_camera[4];
+};
+static_assert(sizeof(Uniforms) == 240);
+static_assert(offsetof(Uniforms, camera_position) == 128);
+static_assert(offsetof(Uniforms, specular_shininess) == 208);
+static_assert(offsetof(Uniforms, direction_to_camera) == 224);
+
+struct Camera {
+    float position[3] = { 0.0f, 0.0f, 5.0f };
+    float rotation[3] = { 0.0f, 0.0f, 0.0f }; // pitch, yaw, roll in degrees
+    float fov = 60.0f;
+    float near_plane = 0.1f;
+    float far_plane = 100.0f;
+    float ortho_half_height = 2.5f;
+};
+
+struct Lighting {
+    float azimuth = -35.0f;
+    float elevation = -45.0f;
+    float color[3] = { 1.0f, 1.0f, 1.0f };
+    float intensity = 1.0f;
+    float ambient_color[3] = { 1.0f, 1.0f, 1.0f };
+    float ambient_intensity = 0.12f;
+};
+
+struct Material {
+    float albedo[3] = { 0.95f, 0.38f, 0.08f };
+    float specular[3] = { 0.7f, 0.7f, 0.7f };
+    float shininess = 32.0f;
+};
+
+Camera camera;
+Lighting lighting;
+Material material;
 
 struct Buffer {
     VkBuffer handle = VK_NULL_HANDLE;
@@ -74,19 +120,31 @@ bool upload(const Buffer& buffer, const void* data, size_t size) {
 bool createCone() {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    vertices.push_back({ { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.8f, 0.25f } });
-    vertices.push_back({ { 0.0f, -1.0f, 0.0f }, { 0.55f, 0.22f, 0.05f } });
+    // Each triangle has its own vertices: the side and base need different normals.
+    const auto addTriangle = [&](const std::array<float, 3>& a,
+                                 const std::array<float, 3>& b,
+                                 const std::array<float, 3>& c) {
+        const float ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+        const float vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+        float nx = uy * vz - uz * vy;
+        float ny = uz * vx - ux * vz;
+        float nz = ux * vy - uy * vx;
+        const float length = std::sqrt(nx * nx + ny * ny + nz * nz);
+        nx /= length;
+        ny /= length;
+        nz /= length;
+        for (const auto& p : { a, b, c }) {
+            indices.push_back(uint32_t(vertices.size()));
+            vertices.push_back({ { p[0], p[1], p[2] }, { nx, ny, nz } });
+        }
+    };
     for (uint32_t i = 0; i < segments; ++i) {
         const float angle = 2.0f * pi * float(i) / float(segments);
-        const float x = std::cos(angle), z = std::sin(angle);
-        vertices.push_back({ { x, -1.0f, z }, { 0.95f, 0.38f, 0.08f } });
-        vertices.push_back({ { x, -1.0f, z }, { 0.55f, 0.22f, 0.05f } });
-    }
-    for (uint32_t i = 0; i < segments; ++i) {
-        const uint32_t current = 2 + 2 * i;
-        const uint32_t next = 2 + 2 * ((i + 1) % segments);
-        indices.insert(indices.end(), { 0, next, current });
-        indices.insert(indices.end(), { 1, current + 1, next + 1 });
+        const float next_angle = 2.0f * pi * float((i + 1) % segments) / float(segments);
+        const std::array<float, 3> current = { std::cos(angle), -1.0f, std::sin(angle) };
+        const std::array<float, 3> next = { std::cos(next_angle), -1.0f, std::sin(next_angle) };
+        addTriangle({ 0.0f, 1.0f, 0.0f }, next, current);
+        addTriangle({ 0.0f, -1.0f, 0.0f }, current, next);
     }
     index_count = uint32_t(indices.size());
     if (!createBuffer(vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_buffer) ||
@@ -97,12 +155,12 @@ bool createCone() {
 
 bool createUniforms() {
     const auto device = graphics::internal::context.device;
-    if (!createBuffer(sizeof(Mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniform_buffer)) return false;
+    if (!createBuffer(sizeof(Uniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniform_buffer)) return false;
     const VkDescriptorSetLayoutBinding binding = {
         .binding = 0,
         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
     };
     const VkDescriptorSetLayoutCreateInfo layout_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -128,7 +186,7 @@ bool createUniforms() {
     };
     if (!check(vkAllocateDescriptorSets(device, &allocate_info, &descriptor_set),
             "vkAllocateDescriptorSets")) return false;
-    const VkDescriptorBufferInfo buffer_info = { uniform_buffer.handle, 0, sizeof(Mat4) };
+    const VkDescriptorBufferInfo buffer_info = { uniform_buffer.handle, 0, sizeof(Uniforms) };
     const VkWriteDescriptorSet write = {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptor_set,
@@ -191,7 +249,7 @@ bool createPipeline(const std::filesystem::path& shader_directory) {
     const VkVertexInputBindingDescription binding = { 0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
     const VkVertexInputAttributeDescription attributes[] = {
         { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) },
-        { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) },
+        { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal) },
     };
     const VkPipelineVertexInputStateCreateInfo vertex_input = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -257,12 +315,15 @@ bool createPipeline(const std::filesystem::path& shader_directory) {
     return check(result, "vkCreateGraphicsPipelines");
 }
 
-void resetTransform() {
+void resetScene() {
     position[0] = position[1] = position[2] = 0.0f;
     rotation[0] = 0.35f;
     rotation[1] = rotation[2] = 0.0f;
     scale = 1.0f;
     use_perspective = true;
+    camera = Camera{};
+    lighting = Lighting{};
+    material = Material{};
 }
 
 } // namespace
@@ -289,7 +350,7 @@ void update([[maybe_unused]] double time) {
     const float step = std::min(io.DeltaTime, 0.1f);
     if (!io.WantCaptureKeyboard) {
         if (ImGui::IsKeyPressed(ImGuiKey_P, false)) use_perspective = !use_perspective;
-        if (ImGui::IsKeyPressed(ImGuiKey_R, false)) resetTransform();
+        if (ImGui::IsKeyPressed(ImGuiKey_R, false)) resetScene();
         if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) rotation[1] -= step;
         if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) rotation[1] += step;
         if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) rotation[0] -= step;
@@ -308,17 +369,49 @@ void update([[maybe_unused]] double time) {
         for (float& value : position) value = std::clamp(value, -3.0f, 3.0f);
     }
     ImGui::SetNextWindowPos(ImVec2(15, 15), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Lab 1 - Variant 9: Cone", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-    ImGui::TextUnformatted("P: change projection | R: reset");
-    ImGui::TextUnformatted("Arrows: rotate X/Y | Z/C: rotate Z");
-    ImGui::TextUnformatted("W/A/S/D: move X/Y | Q/E: move Z");
-    ImGui::TextUnformatted("+/-: scale (also numpad)");
-    ImGui::TextUnformatted("Click the scene, use English keyboard layout.");
-    ImGui::Separator();
-    ImGui::Text("Projection: %s", use_perspective ? "Perspective" : "Orthographic");
-    ImGui::Text("Position: %.2f, %.2f, %.2f | Scale: %.2f", position[0], position[1], position[2], scale);
-    ImGui::Text("Rotation (deg): %.1f, %.1f, %.1f", rotation[0] * 180.0f / pi,
-        rotation[1] * 180.0f / pi, rotation[2] * 180.0f / pi);
+    ImGui::SetNextWindowSize(ImVec2(420, std::min(665.0f, io.DisplaySize.y - 30.0f)), ImGuiCond_Always);
+    ImGui::Begin("Lab 2 - Camera and lighting", nullptr, ImGuiWindowFlags_NoResize);
+    ImGui::TextUnformatted("Variant 9: cone | Blinn-Phong | Grade 3");
+    if (ImGui::Button("Reset scene (R)")) resetScene();
+    ImGui::TextUnformatted("Drag values or Ctrl+click to enter a number.");
+    ImGui::PushItemWidth(245.0f);
+    constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat3("Position", camera.position, 0.02f, -20.0f, 20.0f, "%.2f", clamp);
+        ImGui::DragFloat3("Pitch/Yaw/Roll", camera.rotation, 0.5f, -180.0f, 180.0f, "%.1f", clamp);
+        ImGui::Checkbox("Perspective (P)", &use_perspective);
+        ImGui::SliderFloat("FOV (degrees)", &camera.fov, 20.0f, 120.0f, "%.1f", clamp);
+        ImGui::DragFloat("Near plane", &camera.near_plane, 0.01f, 0.01f, camera.far_plane - 0.01f, "%.2f", clamp);
+        ImGui::DragFloat("Far plane", &camera.far_plane, 0.1f, camera.near_plane + 0.01f, 500.0f, "%.2f", clamp);
+        if (!use_perspective)
+            ImGui::SliderFloat("Ortho size", &camera.ortho_half_height, 0.2f, 10.0f, "%.2f", clamp);
+    }
+    if (ImGui::CollapsingHeader("Directional light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderFloat("Azimuth", &lighting.azimuth, -180.0f, 180.0f, "%.1f deg", clamp);
+        ImGui::SliderFloat("Elevation", &lighting.elevation, -90.0f, 90.0f, "%.1f deg", clamp);
+        ImGui::ColorEdit3("Light color", lighting.color);
+        ImGui::SliderFloat("Intensity", &lighting.intensity, 0.0f, 3.0f, "%.2f", clamp);
+        ImGui::TextUnformatted("Angles set the direction in which rays travel.");
+    }
+    if (ImGui::CollapsingHeader("Ambient light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::ColorEdit3("Ambient color", lighting.ambient_color);
+        ImGui::SliderFloat("Ambient intensity", &lighting.ambient_intensity, 0.0f, 1.0f, "%.2f", clamp);
+    }
+    if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::ColorEdit3("Albedo", material.albedo);
+        ImGui::ColorEdit3("Specular color", material.specular);
+        ImGui::SliderFloat("Shininess", &material.shininess, 1.0f, 256.0f, "%.1f", clamp);
+    }
+    if (ImGui::CollapsingHeader("Model (Lab 1)")) {
+        ImGui::DragFloat3("Translation", position, 0.02f, -3.0f, 3.0f, "%.2f", clamp);
+        ImGui::SliderAngle("Rotation X", &rotation[0], -180.0f, 180.0f, "%.1f deg", clamp);
+        ImGui::SliderAngle("Rotation Y", &rotation[1], -180.0f, 180.0f, "%.1f deg", clamp);
+        ImGui::SliderAngle("Rotation Z", &rotation[2], -180.0f, 180.0f, "%.1f deg", clamp);
+        ImGui::SliderFloat("Scale", &scale, 0.1f, 3.0f, "%.2f", clamp);
+        ImGui::TextUnformatted("Arrows: rotate X/Y | Z/C: rotate Z");
+        ImGui::TextUnformatted("W/A/S/D: move X/Y | Q/E: move Z | +/-: scale");
+    }
+    ImGui::PopItemWidth();
     ImGui::Text("%u triangles | %.0f FPS", index_count / 3, io.Framerate);
     ImGui::End();
 }
@@ -328,11 +421,29 @@ void render(const graphics::internal::FrameData& fd) {
     const float aspect = float(context.swapchain_extent.width) / float(context.swapchain_extent.height);
     const Mat4 model = translation(position[0], position[1], position[2]) *
         rotationZ(rotation[2]) * rotationY(rotation[1]) * rotationX(rotation[0]) * scaling(scale);
-    const Mat4 view = translation(0.0f, 0.0f, -5.0f);
-    const Mat4 projection = use_perspective ? perspective(pi / 3.0f, aspect, 0.1f, 100.0f) :
-        orthographic(2.5f, aspect, 0.1f, 100.0f);
-    const Mat4 mvp = projection * view * model;
-    upload(uniform_buffer, &mvp, sizeof(mvp));
+    const float radians = pi / 180.0f;
+    const Mat4 view = viewMatrix(camera.position[0], camera.position[1], camera.position[2],
+        camera.rotation[0] * radians, camera.rotation[1] * radians, camera.rotation[2] * radians);
+    const Mat4 projection = use_perspective ?
+        perspective(camera.fov * radians, aspect, camera.near_plane, camera.far_plane) :
+        orthographic(camera.ortho_half_height, aspect, camera.near_plane, camera.far_plane);
+    const float azimuth = lighting.azimuth * radians;
+    const float elevation = lighting.elevation * radians;
+    const Uniforms uniforms = {
+        projection * view * model,
+        model,
+        { camera.position[0], camera.position[1], camera.position[2], use_perspective ? 1.0f : 0.0f },
+        { std::cos(elevation) * std::sin(azimuth), std::sin(elevation),
+          -std::cos(elevation) * std::cos(azimuth), 0.0f },
+        { lighting.color[0], lighting.color[1], lighting.color[2], lighting.intensity },
+        { lighting.ambient_color[0], lighting.ambient_color[1], lighting.ambient_color[2], lighting.ambient_intensity },
+        { material.albedo[0], material.albedo[1], material.albedo[2], 0.0f },
+        { material.specular[0], material.specular[1], material.specular[2], material.shininess },
+        // Orthographic viewing rays are parallel to the camera's local +Z axis.
+        { view.at(2, 0), view.at(2, 1), view.at(2, 2), 0.0f },
+    };
+    // prepare() has already waited for the previous frame before this UBO write.
+    upload(uniform_buffer, &uniforms, sizeof(uniforms));
 
     vkResetCommandBuffer(fd.command_buffer, 0);
     const VkCommandBufferBeginInfo begin = {
