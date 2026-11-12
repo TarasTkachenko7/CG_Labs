@@ -2,8 +2,10 @@
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 uv;
 layout(location = 0) out vec3 worldPosition;
 layout(location = 1) out vec3 worldNormal;
+layout(location = 2) out vec2 textureUV;
 
 layout(std140, set = 0, binding = 0) uniform GlobalUniforms {
     mat4 mvp;
@@ -21,4 +23,5 @@ void main() {
     gl_Position = mvp * vec4(position, 1.0);
     worldPosition = vec3(model * vec4(position, 1.0));
     worldNormal = transpose(inverse(mat3(model))) * normal;
+    textureUV = uv;
 }

@@ -63,7 +63,6 @@ inline Mat4 rotationZ(float angle) {
 }
 
 inline Mat4 viewMatrix(float x, float y, float z, float pitch, float yaw, float roll) {
-    // The view matrix reverses the camera's translation and rotations in reverse order.
     return rotationZ(-roll) * rotationX(-pitch) * rotationY(-yaw) * translation(-x, -y, -z);
 }
 

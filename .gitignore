@@ -1,3 +1,4 @@
 build-*/
 shaders/*.spv
 imgui.ini
+reports/

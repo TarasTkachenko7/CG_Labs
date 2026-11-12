@@ -2,7 +2,10 @@
 
 layout(location = 0) in vec3 worldPosition;
 layout(location = 1) in vec3 worldNormal;
+layout(location = 2) in vec2 textureUV;
 layout(location = 0) out vec4 outColor;
+
+layout(set = 0, binding = 1) uniform sampler2D albedoTexture;
 
 layout(std140, set = 0, binding = 0) uniform GlobalUniforms {
     mat4 mvp;
@@ -18,7 +21,6 @@ layout(std140, set = 0, binding = 0) uniform GlobalUniforms {
 
 void main() {
     vec3 N = normalize(worldNormal);
-    // lightDirection follows the rays; L points from the surface toward the light.
     vec3 L = normalize(-lightDirection.xyz);
     vec3 toCamera = cameraPosition.xyz - worldPosition;
     vec3 V = cameraPosition.w > 0.5 ?
@@ -32,8 +34,9 @@ void main() {
         specular = pow(max(dot(N, H), 0.0), specularShininess.w);
     }
 
-    vec3 ambient = ambientColorIntensity.rgb * ambientColorIntensity.w * albedo.rgb;
+    vec3 baseColor = texture(albedoTexture, textureUV).rgb * albedo.rgb;
+    vec3 ambient = ambientColorIntensity.rgb * ambientColorIntensity.w * baseColor;
     vec3 direct = lightColorIntensity.rgb * lightColorIntensity.w *
-        (albedo.rgb * diffuse + specularShininess.rgb * specular);
+        (baseColor * diffuse + specularShininess.rgb * specular);
     outColor = vec4(ambient + direct, 1.0);
 }
