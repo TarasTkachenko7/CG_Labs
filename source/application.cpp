@@ -536,7 +536,7 @@ void resetScene() {
 
 bool initialize(const std::filesystem::path& shader_directory) {
     if (createUploadPool() && createCone() &&
-        createTexture(shader_directory.parent_path() / "textures" / "checker.png") &&
+        createTexture(shader_directory.parent_path() / "textures" / "russia.png") &&
         createUniforms() && createPipeline(shader_directory)) return true;
     shutdown();
     return false;
@@ -615,7 +615,7 @@ void update([[maybe_unused]] double time) {
         ImGui::SliderFloat("Ambient intensity", &lighting.ambient_intensity, 0.0f, 1.0f, "%.2f", clamp);
     }
     if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::TextUnformatted("Texture: checker.png");
+        ImGui::TextUnformatted("Texture: russia.png");
         ImGui::ColorEdit3("Albedo", material.albedo);
         ImGui::ColorEdit3("Specular color", material.specular);
         ImGui::SliderFloat("Shininess", &material.shininess, 1.0f, 256.0f, "%.1f", clamp);

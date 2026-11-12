@@ -72,9 +72,9 @@ target_sources(${PROJECT_NAME} PRIVATE ${lodepng_SOURCE_DIR}/lodepng.cpp)
 
 add_custom_target(textures
 	COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/textures"
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/textures/checker.png"
-		"$<TARGET_FILE_DIR:${PROJECT_NAME}>/textures/checker.png"
-	DEPENDS "${CMAKE_SOURCE_DIR}/textures/checker.png"
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/textures/russia.png"
+		"$<TARGET_FILE_DIR:${PROJECT_NAME}>/textures/russia.png"
+	DEPENDS "${CMAKE_SOURCE_DIR}/textures/russia.png"
 	VERBATIM
 )
 add_dependencies(${PROJECT_NAME} textures)
